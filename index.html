@@ -37,7 +37,12 @@
     </div>
     <div class="actions">
       <button id="translateBtn" class="primary">翻訳する <span>→</span></button>
-      <label class="secondary upload-label">▧ 写真から翻訳<input id="photoInput" type="file" accept="image/*" capture="environment" hidden></label>
+      <div class="photo-actions">
+        <button id="cameraBtn" class="secondary" type="button">📷 今から撮影</button>
+        <button id="albumBtn" class="secondary" type="button">▧ アルバムから選択</button>
+      </div>
+      <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden>
+      <input id="albumInput" type="file" accept="image/*" hidden>
     </div>
     <div id="status" class="status" aria-live="polite"></div>
   </section>

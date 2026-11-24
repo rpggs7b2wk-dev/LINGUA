@@ -49,29 +49,62 @@ function addHistory(a,b){let h=JSON.parse(localStorage.getItem("linguaHistory")|
 $("historyBtn").onclick=()=>{const h=JSON.parse(localStorage.getItem("linguaHistory")||"[]");$("historyList").innerHTML="";h.forEach(x=>{const d=document.createElement("div");d.className="history-item";d.textContent=x.a;const sm=document.createElement("small");sm.textContent=x.b;d.append(sm);d.onclick=()=>{source.value=x.a;$("translatedText").textContent=x.b;latestTranslation=x.b;$("resultSection").classList.remove("hidden");};$("historyList").append(d);});$("historySection").classList.remove("hidden");};
 $("closeHistory").onclick=()=>$("historySection").classList.add("hidden");
 
-// Speech recognition: browser support varies, especially on iPhone.
-$("micBtn").onclick=()=>{
+// Speech recognition: permission errors can be fixed in Safari settings, then retried.
+const micBtn=$("micBtn");
+let isListening=false;
+function resetMicButton(){isListening=false;micBtn.textContent="🎙 音声入力";}
+function showMicPermissionHelp(){
+ setStatus("マイクが許可されていません。iPhoneの「設定」→「Safari」→「マイク」、またはSafariのアドレスバー左側のページ設定から、このサイトのマイクを「許可」にして、LINGUAに戻ってもう一度「音声入力」を押してください。");
+ micBtn.textContent="↻ もう一度試す";
+}
+micBtn.onclick=()=>{
  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
- if(!SR){setStatus("このブラウザでは音声認識に対応していません。iOSの音声入力キーボードも利用できます。");return;}
- if(recognition){recognition.stop();recognition=null;$("micBtn").textContent="🎙 音声入力";return;}
- recognition=new SR();recognition.lang=direction==="ja-en"?"ja-JP":"en-US";recognition.interimResults=true;recognition.continuous=true;
- $("micBtn").textContent="■ 音声入力を停止";setStatus("マイクを使用中です。話し終えたら停止してください。");
- recognition.onresult=e=>{let final="";for(let i=e.resultIndex;i<e.results.length;i++)final+=e.results[i][0].transcript;source.value+=final;$("charCount").textContent=`${source.value.length} / 2000`;};
- recognition.onerror=()=>setStatus("音声を認識できませんでした。マイクの許可を確認してください。");
- recognition.onend=()=>{$("micBtn").textContent="🎙 音声入力";recognition=null;};
- recognition.start();
+ if(!SR){setStatus("このブラウザでは音声認識に対応していません。iPhoneのキーボードにあるマイク（音声入力）を利用してください。");return;}
+ if(isListening && recognition){try{recognition.stop();}catch(e){}resetMicButton();return;}
+ try{
+  recognition=new SR();
+  recognition.lang=direction==="ja-en"?"ja-JP":"en-US";
+  recognition.interimResults=true;
+  recognition.continuous=true;
+  isListening=true;
+  micBtn.textContent="■ 音声入力を停止";
+  setStatus("マイクを使用中です。話し終えたら停止してください。");
+  recognition.onresult=e=>{
+   let finalText="";
+   for(let i=e.resultIndex;i<e.results.length;i++) finalText+=e.results[i][0].transcript;
+   source.value+=finalText;
+   $("charCount").textContent=`${source.value.length} / 2000`;
+  };
+  recognition.onerror=e=>{
+   resetMicButton();
+   if(e.error==="not-allowed"||e.error==="service-not-allowed"||e.error==="permission-denied") showMicPermissionHelp();
+   else if(e.error==="no-speech") setStatus("音声が検出されませんでした。マイクに近づいて、もう一度お試しください。");
+   else setStatus("音声を認識できませんでした。通信環境とマイクの設定を確認して、もう一度お試しください。");
+  };
+  recognition.onend=()=>{resetMicButton();recognition=null;};
+  recognition.start();
+ }catch(err){resetMicButton();showMicPermissionHelp();recognition=null;}
 };
 
-// Photo OCR (Tesseract.js runs in the browser via CDN).
-$("photoInput").onchange=async e=>{
- const file=e.target.files[0];if(!file)return;
- $("photoPreview").classList.remove("hidden");$("previewImage").src=URL.createObjectURL(file);$("ocrText").value="";$("ocrStatus").textContent="画像から文字を読み取っています...";
+// Camera capture and photo-library selection are separate actions.
+$("cameraBtn").onclick=()=>$("cameraInput").click();
+$("albumBtn").onclick=()=>$("albumInput").click();
+async function processPhoto(file){
+ if(!file)return;
+ $("photoPreview").classList.remove("hidden");
+ $("previewImage").src=URL.createObjectURL(file);
+ $("ocrText").value="";
+ $("ocrStatus").textContent="画像から文字を読み取っています...";
  try{
+  if(!window.Tesseract) throw new Error("OCR library unavailable");
   const lang=direction==="ja-en"?"eng":"eng+jpn";
   const result=await Tesseract.recognize(file,lang,{logger:m=>{if(m.status==="recognizing text")$("ocrStatus").textContent=`文字を読み取り中... ${Math.round((m.progress||0)*100)}%`;}});
-  $("ocrText").value=result.data.text.trim();$("ocrStatus").textContent=$("ocrText").value?"読み取り完了。必要なら文章を修正できます。":"文字を読み取れませんでした。明るく撮影し直してください。";
- }catch(err){$("ocrStatus").textContent="写真の読み取りに失敗しました。ネット接続を確認してください。";}
-};
+  $("ocrText").value=result.data.text.trim();
+  $("ocrStatus").textContent=$("ocrText").value?"読み取り完了。必要なら文章を修正できます。":"文字を読み取れませんでした。ピントと明るさを確認して、もう一度お試しください。";
+ }catch(err){$("ocrStatus").textContent="写真の読み取りに失敗しました。通信環境を確認してください。";}
+}
+$("cameraInput").onchange=e=>{processPhoto(e.target.files[0]);e.target.value="";};
+$("albumInput").onchange=e=>{processPhoto(e.target.files[0]);e.target.value="";};
 $("useOcrBtn").onclick=()=>{source.value=$("ocrText").value;$("charCount").textContent=`${source.value.length} / 2000`;$("photoPreview").classList.add("hidden");translate(source.value);};
 setDirection();
 if("serviceWorker" in navigator && location.protocol.startsWith("http"))navigator.serviceWorker.register("./sw.js").catch(()=>{});
